@@ -2,7 +2,7 @@
   "profiles": {
     "autolpr": {
       "commandName": "Project",
-      "commandLineArgs": "1920 1080",
+      "commandLineArgs": "1920 1080 B:\\GitRepos\\ultimateALPR-SDK\\assets\\",
       "workingDirectory": "B:\\GitRepos\\ultimateALPR-SDK\\binaries\\windows\\x86_64",
       "nativeDebugging": true
     }

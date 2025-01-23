@@ -15,7 +15,7 @@
 	<ItemGroup>
 		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
 		<Reference Include="ultimateALPR-SDK">
-			<HintPath>B:\GitRepos\ultimateALPR-SDK\binaries\windows\x86_64\ultimateALPR-SDK.dll</HintPath>
+			<HintPath>B:\\GitRepos\\ultimateALPR-SDK\\binaries\\windows\\x86_64\\ultimateALPR-SDK.dll</HintPath>
 		</Reference>
 	</ItemGroup>
 
