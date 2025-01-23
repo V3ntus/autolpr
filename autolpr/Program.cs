@@ -14,31 +14,13 @@ namespace detector
             public byte[] V { get; set; }
             public int Width { get; set; }
             public int Height { get; set; }
-            public int YStride { get; set; }
-            public int UStride { get; set; }
-            public int VStride { get; set; }
 
-            public static YUVFrameData Create(
-                byte[] Y,
-                byte[] U,
-                byte[] V,
-                int Width,
-                int Height,
-                int YStride,
-                int UStride,
-                int VStride
-                )
-            {
-                YUVFrameData frame = new YUVFrameData();
-                frame.Y = Y;
-                frame.U = U;
-                frame.V = V;
-                frame.Width = Width;
-                frame.Height = Height;
-                frame.YStride = YStride;
-                frame.UStride = UStride;
-                frame.VStride = VStride;
-                return frame;
+            public static int YStride(int Width) => Width * YUV_BYTES_PER_PIXEL;
+            public static int UStride(int Width) => (Width >> 1) * YUV_BYTES_PER_PIXEL;
+            public static int VStride(int Width) => (Width >> 1) * YUV_BYTES_PER_PIXEL;
+
+            public static int ySize(int Width, int Height) => YStride(Width) * Height;
+            public static int uvSize(int Width, int Height) => UStride(Width) * (Height / 2);
             }
         }
 
