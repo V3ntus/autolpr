@@ -1,5 +1,8 @@
 ﻿using Newtonsoft;
+using Newtonsoft.Json;
 using org.doubango.ultimateAlpr.Sdk;
+using System.IO;
+using System.Runtime.InteropServices;
 
 namespace detector
 {
@@ -21,18 +24,20 @@ namespace detector
 
             public static int ySize(int Width, int Height) => YStride(Width) * Height;
             public static int uvSize(int Width, int Height) => UStride(Width) * (Height / 2);
-            }
         }
 
-        static void Main(String[] args)
+        public static void Main(String[] args)
         {
-            if (args.Length < 2)
+            Console.Title = "autoLPR";
+
+            if (args.Length < 3)
             {
-                Console.Error.WriteLine("Incorrect number of arguments. Usage: detector.exe <width> <height>");
-                throw new ArgumentException("Incorrect number of arguments. Usage: detector.exe <width> <height>");
+                Console.Error.WriteLine("Incorrect number of arguments. Usage: detector.exe <width> <height> <assets_path>");
+                throw new ArgumentException("Incorrect number of arguments. Usage: detector.exe <width> <height> <assets_path>");
             }
 
             int width, height;
+            String assetsPath;
 
             try
             {
@@ -45,58 +50,92 @@ namespace detector
                 throw;
             }
 
-            int ySize = width * height;
-            int uvSize = (width / 2) * (height / 2);
-            int frameSize = ySize + 2 * uvSize;
-
-            // Initialize YUV buffer
-            byte[] buffer = new byte[frameSize];
-            int offset = 0;
-            int bytesRead = 0;
+            assetsPath = args[2];
+            if (!Directory.Exists(assetsPath))
+            {
+                throw new Exception(String.Format("Assets directory does not exist: {0}", assetsPath));
+            }
+            else
+            {
+                Console.WriteLine(String.Format("=== Using assets folder: {0}", assetsPath));
+            }
 
             // Initialize ALPR
-            CheckResult("Init", UltAlprSdkEngine.init(BuildConfigJSON()));
+            CheckResult("Init", UltAlprSdkEngine.init(BuildConfigJSON(assetsPath)));
 
-            using (Stream input = Console.OpenStandardInput())
+            YUVFrameData? frame;
+
+            while ((frame = ReadYUVFrameMetadata(width, height)) != null)
             {
-                while ((bytesRead = input.Read(buffer, offset, frameSize - offset)) > 0)
+                YUVFrameData _frame = (YUVFrameData)frame;
+                if (_frame.Width == 0 || _frame.Height == 0) break;
+
+                IntPtr yPtr = Marshal.AllocHGlobal(_frame.Y.Length);
+                IntPtr uPtr = Marshal.AllocHGlobal(_frame.U.Length);
+                IntPtr vPtr = Marshal.AllocHGlobal(_frame.V.Length);
+
+                try
                 {
-                    offset += bytesRead;
+                    Marshal.Copy(_frame.Y, 0, yPtr, _frame.Y.Length);
+                    Marshal.Copy(_frame.U, 0, uPtr, _frame.U.Length);
+                    Marshal.Copy(_frame.V, 0, vPtr, _frame.V.Length);
 
-                    if (offset >= frameSize)
-                    {
-                        byte[] yPlane = new byte[ySize];
-                        Array.Copy(buffer, 0, yPlane, 0, ySize);
+                    UltAlprSdkResult result = CheckResult("Process", UltAlprSdkEngine.process(
+                        ULTALPR_SDK_IMAGE_TYPE.ULTALPR_SDK_IMAGE_TYPE_YUV420P,
+                        yPtr, uPtr, vPtr,
+                        (uint)_frame.Width,
+                        (uint)_frame.Height,
+                        (uint)YUVFrameData.YStride(_frame.Width),
+                        (uint)YUVFrameData.UStride(_frame.Width),
+                        (uint)YUVFrameData.VStride(_frame.Width)
+                    ));
 
-                        byte[] uPlane = new byte[uvSize];
-                        Array.Copy(buffer, ySize, uPlane, 0, uvSize);
-
-                        byte[] vPlane = new byte[uvSize];
-                        Array.Copy(buffer, ySize + uvSize, vPlane, 0, uvSize);
-
-                        YUVFrameData frame = YUVFrameData.Create(
-                            yPlane,
-                            uPlane,
-                            vPlane,
-                            width,
-                            height,
-                            width,
-                            width / 2,
-                            width / 2
-                        );
-
-                        offset = 0;
-                    }
+                    Console.WriteLine(result.json());
                 }
-
-                if (offset > 0 && offset < frameSize)
+                finally
                 {
-                    Console.Error.WriteLine("Incomplete YUV frame detected.");
+                    Marshal.FreeHGlobal(yPtr);
+                    Marshal.FreeHGlobal(uPtr);
+                    Marshal.FreeHGlobal(vPtr);
                 }
             }
         }
 
-        static String BuildConfigJSON() => Newtonsoft.Json.JsonConvert.SerializeObject(new
+        private static YUVFrameData? ReadYUVFrameMetadata(int width, int height)
+        {
+            try
+            {
+                if (Console.In.Peek() == -1 || width <= 0 || height <= 0) return null;
+                YUVFrameData frameData = new()
+                {
+                    Y = ReadBytesFromStdin(YUVFrameData.ySize(width, height)),
+                    U = ReadBytesFromStdin(YUVFrameData.uvSize(width, height)),
+                    V = ReadBytesFromStdin(YUVFrameData.uvSize(width, height)),
+                    Width = width,
+                    Height = height,
+                };
+                return frameData;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        private static byte[] ReadBytesFromStdin(int length)
+        {
+            byte[] buffer = new byte[length];
+            int bytesRead = 0;
+            while (bytesRead < length)
+            {
+                int read = Console.OpenStandardInput().Read(buffer, bytesRead, length - bytesRead);
+                if (read == 0) break;
+                bytesRead += read;
+            }
+            return buffer;
+        }
+
+        static String BuildConfigJSON(String assetsPath) => Newtonsoft.Json.JsonConvert.SerializeObject(new
         {
             debug_level = Config.CONFIG_DEBUG_LEVEL,
             debug_write_input_image_enabled = Config.CONFIG_DEBUG_WRITE_INPUT_IMAGE,
@@ -130,9 +169,9 @@ namespace detector
             recogn_score_type = Config.CONFIG_RECOGN_SCORE_TYPE,
             recogn_rectify_enabled = Config.CONFIG_RECOGN_RECTIFY_ENABLED,
 
-            assets_folder = "B:\\GitRepos\\ultimateALPR-SDK\\assets",
+            assets_folder = assetsPath,
             charset = Config.CONFIG_CHARSET,
-            license_token_data = String.Empty,
+            license_token_data = String.Empty
         });
 
         static UltAlprSdkResult CheckResult(String functionName, UltAlprSdkResult result)
@@ -147,6 +186,7 @@ namespace detector
         }
     }
 
+    [JsonObject(MemberSerialization.Fields)]
     public class Config
     {
         /**
