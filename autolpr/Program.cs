@@ -5,6 +5,8 @@ namespace detector
 {
     class Program
     {
+        const int YUV_BYTES_PER_PIXEL = 1;
+
         public struct YUVFrameData
         {
             public byte[] Y { get; set; }
